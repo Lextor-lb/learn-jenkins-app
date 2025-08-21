@@ -19,8 +19,7 @@ pipeline {
                     npm ci
                     echo "Building application..."
                     npm run build
-                    echo "Build completed. Contents:"
-                    ls -la
+                    echo "Build completed!"
                 '''
             }
         }
@@ -37,29 +36,8 @@ pipeline {
                     echo "Checking if build exists..."
                     test -f build/index.html
                     echo "Running tests..."
-                    npm test -- --coverage --watchAll=false --testResultsProcessor=jest-junit
+                    npm test -- --watchAll=false
                 '''
-            }
-            post {
-                always {
-                    // Publish test results only if they exist
-                    script {
-                        if (fileExists('junit.xml')) {
-                            junit 'junit.xml'
-                        }
-                        // Publish coverage if it exists
-                        if (fileExists('coverage/lcov.info')) {
-                            publishHTML([
-                                allowMissing: false,
-                                alwaysLinkToLastBuild: false,
-                                keepAll: true,
-                                reportDir: 'coverage',
-                                reportFiles: 'index.html',
-                                reportName: 'Coverage Report'
-                            ])
-                        }
-                    }
-                }
             }
         }
 
@@ -78,19 +56,9 @@ pipeline {
                     node_modules/.bin/serve -s build &
                     sleep 10
                     echo "Running E2E tests..."
-                    npx playwright test --reporter=junit
-                    echo "E2E tests completed"
+                    npx playwright test
+                    echo "E2E tests completed!"
                 '''
-            }
-            post {
-                always {
-                    script {
-                        // Publish Playwright test results if they exist
-                        if (fileExists('test-results/results.xml')) {
-                            junit 'test-results/results.xml'
-                        }
-                    }
-                }
             }
         }
     }
@@ -99,19 +67,8 @@ pipeline {
         always {
             echo 'Pipeline completed!'
         }
-        success {
-            echo 'Pipeline succeeded!'
-        }
-        failure {
-            echo 'Pipeline failed!'
-        }
         cleanup {
-            echo 'Cleaning up...'
-            // Clean up any background processes
-            sh '''
-                pkill -f "serve" || true
-                docker container prune -f || true
-            '''
+            sh 'pkill -f "serve" || true'
         }
     }
 }
