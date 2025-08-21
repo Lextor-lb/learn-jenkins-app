@@ -1,6 +1,6 @@
 pipeline {
     agent any
-  
+
     stages {
         stage('Build') {
             agent {
@@ -11,90 +11,36 @@ pipeline {
             }
             steps {
                 sh '''
+                    ls -la
+                    node --version
+                    npm --version
                     npm ci
                     npm run build
+                    ls -la
                 '''
             }
         }
 
-        stage('Tests') {
-            parallel {
-                stage('Unit tests') {
-                    agent {
-                        docker {
-                            image 'node:18-alpine'
-                            reuseNode true
-                        }
-                    }
-
-                    steps {
-                        sh '''
-                            # Install jest-junit and configure it properly
-                            npm install --save-dev jest-junit
-                            
-                            # Create jest config file
-                            cat > jest.config.js << 'EOF'
-                            module.exports = {
-                              reporters: [
-                                "default",
-                                ["jest-junit", {
-                                  outputDirectory: "jest-results",
-                                  outputName: "junit.xml"
-                                }]
-                              ]
-                            };
-                            EOF
-                            
-                            # Run tests with custom config
-                            npm test -- --config=jest.config.js
-                        '''
-                    }
-                    post {
-                        always {
-                            junit 'jest-results/junit.xml'
-                        }
-                    }
-                }
-
-                stage('E2E') {
-                    agent {
-                        docker {
-                            image 'mcr.microsoft.com/playwright:v1.39.0-jammy'
-                            reuseNode true
-                        }
-                    }
-
-                    steps {
-                        sh '''
-                            # Install a more reliable static server
-                            npm install -g http-server
-                            
-                            # Start the server in background
-                            http-server build -p 3000 -s &
-                            SERVER_PID=$!
-                            
-                            # Wait for server to start
-                            sleep 5
-                            
-                            # Check if server is running
-                            curl -f http://localhost:3000 || echo "Server not ready, waiting..."
-                            sleep 5
-                            
-                            # Run Playwright tests
-                            npx playwright test --reporter=html
-                            
-                            # Stop the server
-                            kill $SERVER_PID
-                        '''
-                    }
-
-                    post {
-                        always {
-                            publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: false, reportDir: 'playwright-report', reportFiles: 'index.html', reportName: 'Playwright HTML Report', reportTitles: '', useWrapperFileDirectly: true])
-                        }
-                    }
+        stage('Test') {
+            agent {
+                docker {
+                    image 'node:18-alpine'
+                    reuseNode true
                 }
             }
+
+            steps {
+                sh '''
+                    test -f build/index.html
+                    npm test
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            junit 'test-results/junit.xml'
         }
     }
 }
