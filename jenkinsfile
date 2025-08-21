@@ -2,6 +2,21 @@ pipeline {
     agent any
   
     stages {
+        stage('Build') {
+            agent {
+                docker {
+                    image 'node:18-alpine'
+                    reuseNode true
+                }
+            }
+            steps {
+                sh '''
+                    npm ci
+                    npm run build
+                '''
+            }
+        }
+
         stage('Tests') {
             parallel {
                 stage('Unit tests') {
@@ -14,11 +29,24 @@ pipeline {
 
                     steps {
                         sh '''
-                            # Install jest-junit for test reporting
+                            # Install jest-junit and configure it properly
                             npm install --save-dev jest-junit
                             
-                            # Run tests with explicit output directory
-                            npm test -- --testResultsProcessor="jest-junit" --testResultsDirectory="jest-results"
+                            # Create jest config file
+                            cat > jest.config.js << 'EOF'
+                            module.exports = {
+                              reporters: [
+                                "default",
+                                ["jest-junit", {
+                                  outputDirectory: "jest-results",
+                                  outputName: "junit.xml"
+                                }]
+                              ]
+                            };
+                            EOF
+                            
+                            # Run tests with custom config
+                            npm test -- --config=jest.config.js
                         '''
                     }
                     post {
@@ -38,10 +66,25 @@ pipeline {
 
                     steps {
                         sh '''
-                            npm install serve
-                            node_modules/.bin/serve -s build &
-                            sleep 10
+                            # Install a more reliable static server
+                            npm install -g http-server
+                            
+                            # Start the server in background
+                            http-server build -p 3000 -s &
+                            SERVER_PID=$!
+                            
+                            # Wait for server to start
+                            sleep 5
+                            
+                            # Check if server is running
+                            curl -f http://localhost:3000 || echo "Server not ready, waiting..."
+                            sleep 5
+                            
+                            # Run Playwright tests
                             npx playwright test --reporter=html
+                            
+                            # Stop the server
+                            kill $SERVER_PID
                         '''
                     }
 
